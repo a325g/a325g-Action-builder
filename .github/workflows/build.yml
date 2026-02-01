@@ -35,7 +35,7 @@ jobs:
           export PATH=~/bin:$PATH
           mkdir android && cd android
           # The '--filter=blob:none' saves massive space by not downloading old file versions
-          repo init -u https://github.com/DerpFest-AOSP/manifest.git -b 14 --depth=1 --git-lfs --filter=blob:none
+          repo init -u https://github.com/DerpFest-AOSP/manifest.git -b 15.2 --depth=1 --git-lfs --partial-clone --clone-filter=blob:none
           
           # Clone your Samsung A32 trees
           git clone --depth=1 https://github.com/a325g/device_samsung_a32x.git device/samsung/a32x
