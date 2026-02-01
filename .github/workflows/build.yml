@@ -1,4 +1,4 @@
-name: DerpFest AOSP Builder - Samsung A32
+name: Super-Slim DerpFest AOSP - Samsung A32
 on:
   workflow_dispatch:
 
@@ -6,67 +6,60 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Reclaim Disk Space
+      - name: Maximize Build Space
         uses: easimon/maximize-build-space@master
         with:
-          root-reserve-mb: 1024
-          swap-size-mb: 2048
+          root-reserve-mb: 512
+          swap-size-mb: 1024
           remove-dotnet: 'true'
           remove-android: 'true'
           remove-haskell: 'true'
+          remove-codeql: 'true'
+          remove-docker-images: 'true'
+
+      - name: Aggressive Tool Removal
+        run: |
+          sudo rm -rf /usr/local/share/boost /usr/local/lib/android /opt/ghc /usr/share/dotnet /opt/az /usr/share/swift
+          sudo apt-get clean
 
       - name: Install Build Tools
         run: |
-          sudo apt update
-          sudo apt install -y bc bison build-essential ccache curl flex g++-multilib \
+          sudo apt update && sudo apt install -y bc bison build-essential ccache curl flex g++-multilib \
           gcc-multilib git gnupg gperf libxml2-utils lz4 ncurses-dev python3 \
           libssl-dev rsync unzip zip zlib1g-dev python-is-python3
           mkdir -p ~/bin && curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
           chmod a+x ~/bin/repo
 
-      - name: Setup Rclone (TeraBox)
-        uses: AnimMouse/setup-rclone@v1
-        with:
-          rclone_config: ${{ secrets.RCLONE_CONFIG }}
-
-      - name: Restore CCache from TeraBox
-        run: |
-          mkdir -p ~/.ccache
-          rclone copy terabox:CCACHE_A32/ccache.tar.gz ~/ || true
-          if [ -f ~/ccache.tar.gz ]; then tar -xzf ~/ccache.tar.gz -C ~/ && rm ~/ccache.tar.gz; fi
-
-      - name: Sync DerpFest Source (Shallow)
+      - name: Extreme Slim Sync
         run: |
           export PATH=~/bin:$PATH
           mkdir android && cd android
-          # DerpFest 14 (Change '14' to '15' if you want the newest)
-          repo init -u https://github.com/DerpFest-AOSP/manifest.git -b 14 --depth=1
+          # The '--filter=blob:none' saves massive space by not downloading old file versions
+          repo init -u https://github.com/DerpFest-AOSP/manifest.git -b 14 --depth=1 --git-lfs --filter=blob:none
           
-          # Adding your trees
-          git clone https://github.com/a325g/device_samsung_a32x.git device/samsung/a32x
-          git clone https://github.com/Yenping0001/vendor_samsung_a32x.git vendor/samsung/a32x
-          git clone https://github.com/Yenping0001/android_kernel_samsung_a32x.git kernel/samsung/a32x
+          # Clone your Samsung A32 trees
+          git clone --depth=1 https://github.com/a325g/device_samsung_a32x.git device/samsung/a32x
+          git clone --depth=1 https://github.com/Yenping0001/vendor_samsung_a32x.git vendor/samsung/a32x
+          git clone --depth=1 https://github.com/Yenping0001/android_kernel_samsung_a32x.git kernel/samsung/a32x
           
+          # Sync ONLY what is needed for the build (No extra devices)
           repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
-
+          
       - name: Build DerpFest
         run: |
           export PATH=~/bin:$PATH
           cd android
           export USE_CCACHE=1
           export CCACHE_DIR=~/.ccache
-          ccache -M 20G
+          ccache -M 5G # Small cache to prevent disk-full error
           source build/envsetup.sh
-          # DerpFest target naming is usually derp_[codename]
-          lunch derp_a32x-userdebug
+          lunch derpfest_a32x-userdebug
           mka derp -j$(nproc --all)
 
-      - name: Backup CCache & Upload ROM
-        if: always()
-        run: |
-          # Compress and upload progress so the next run is faster
-          tar -czf ~/ccache.tar.gz -C ~/ .ccache
-          rclone copy ~/ccache.tar.gz terabox:CCACHE_A32/ -P
-          # Upload the ROM if it finished
-          rclone copy android/out/target/product/a32x/DerpFest*.zip terabox:DerpFest_Builds/ -P
+      - name: Upload ROM
+        uses: softprops/action-gh-release@v2
+        if: success()
+        with:
+          files: android/out/target/product/a32x/DerpFest*.zip
+          tag_name: a325g-${{ github.run_id }}
           
