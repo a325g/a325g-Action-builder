@@ -44,6 +44,7 @@ jobs:
           
           # Sync ONLY what is needed for the build (No extra devices)
           repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
+          rm -rf .repo
           
       - name: Build DerpFest
         run: |
