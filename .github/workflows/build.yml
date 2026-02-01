@@ -1,0 +1,72 @@
+name: DerpFest AOSP Builder - Samsung A32
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reclaim Disk Space
+        uses: easimon/maximize-build-space@master
+        with:
+          root-reserve-mb: 1024
+          swap-size-mb: 2048
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+
+      - name: Install Build Tools
+        run: |
+          sudo apt update
+          sudo apt install -y bc bison build-essential ccache curl flex g++-multilib \
+          gcc-multilib git gnupg gperf libxml2-utils lz4 ncurses-dev python3 \
+          libssl-dev rsync unzip zip zlib1g-dev python-is-python3
+          mkdir -p ~/bin && curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+          chmod a+x ~/bin/repo
+
+      - name: Setup Rclone (TeraBox)
+        uses: AnimMouse/setup-rclone@v1
+        with:
+          rclone_config: ${{ secrets.RCLONE_CONFIG }}
+
+      - name: Restore CCache from TeraBox
+        run: |
+          mkdir -p ~/.ccache
+          rclone copy terabox:CCACHE_A32/ccache.tar.gz ~/ || true
+          if [ -f ~/ccache.tar.gz ]; then tar -xzf ~/ccache.tar.gz -C ~/ && rm ~/ccache.tar.gz; fi
+
+      - name: Sync DerpFest Source (Shallow)
+        run: |
+          export PATH=~/bin:$PATH
+          mkdir android && cd android
+          # DerpFest 14 (Change '14' to '15' if you want the newest)
+          repo init -u https://github.com/DerpFest-AOSP/manifest.git -b 14 --depth=1
+          
+          # Adding your trees
+          git clone https://github.com/a325g/device_samsung_a32x.git -b 14 device/samsung/a32x
+          git clone https://github.com/Yenping0001/vendor_samsung_a32x.git -b 14 vendor/samsung/a32x
+          git clone https://github.com/Yenping0001/android_kernel_samsung_a32x.git -b 14 kernel/samsung/a32x
+          
+          repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
+
+      - name: Build DerpFest
+        run: |
+          export PATH=~/bin:$PATH
+          cd android
+          export USE_CCACHE=1
+          export CCACHE_DIR=~/.ccache
+          ccache -M 20G
+          source build/envsetup.sh
+          # DerpFest target naming is usually derp_[codename]
+          lunch derp_a32x-userdebug
+          mka derp -j$(nproc --all)
+
+      - name: Backup CCache & Upload ROM
+        if: always()
+        run: |
+          # Compress and upload progress so the next run is faster
+          tar -czf ~/ccache.tar.gz -C ~/ .ccache
+          rclone copy ~/ccache.tar.gz terabox:CCACHE_A32/ -P
+          # Upload the ROM if it finished
+          rclone copy android/out/target/product/a32x/DerpFest*.zip terabox:DerpFest_Builds/ -P
+          
