@@ -32,43 +32,45 @@ jobs:
           mkdir -p ~/bin && curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
           chmod a+x ~/bin/repo
 
-      - name: Hyper-Slim Sync
+      - name: Manual Overdrive Sync
         run: |
           export PATH=~/bin:$PATH
           mkdir android && cd android
           
-          # Initialize with partial clone and blobless filter
+          # 1. Init with extreme filtering
           repo init -u https://github.com/DerpFest-AOSP/manifest.git -b 14 --depth=1 --partial-clone --clone-filter=blob:none
           
-          # Clone trees manually to avoid repo checkout overhead
+          # 2. Clone your trees manually (Depth 1)
           git clone --depth=1 https://github.com/a325g/device_samsung_a32x.git device/samsung/a32x
           git clone --depth=1 https://github.com/Yenping0001/vendor_samsung_a32x.git vendor/samsung/a32x
           git clone --depth=1 https://github.com/Yenping0001/android_kernel_samsung_a32x.git kernel/samsung/a32x
           
-          # SYNC STRATEGY: Sync but ignore the massive 'prebuilts' that fail
-          # We will let the build system fetch them individually if it can
-          repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
+          # 3. The "Survival" Sync: Sync and immediately purge .repo metadata
+          # We use --no-checkout first to get the data without the disk-bloat
+          repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags --no-checkout
           
-          # Reclaim space BEFORE the build begins
+          # Now force checkout (This is where your error usually happens)
+          # If it fails, we move on anyway and try to build
+          repo forall -c "git checkout ." || true
+          
+          # 4. Cleanup .repo BEFORE building
           rm -rf .repo
+          
+          # 5. Remove all hidden .git folders to save another ~10GB
+          find . -name ".git" -type d -exec rm -rf {} + || true
 
       - name: Build ROM
         run: |
           export PATH=~/bin:$PATH
           cd android
-          
-          # Optimization: Kill more space before building
-          # We don't need the hidden .git folders inside projects anymore
-          find . -name ".git" -type d -exec rm -rf {} + || true
-          
           export USE_CCACHE=0
           source build/envsetup.sh
           
-          # Target for A32 (Ensure this codename is correct)
+          # Codename check: ensure this matches your tree
           lunch derpfest_a32x-userdebug
           
-          # Build with limited threads to avoid RAM-related space spikes
-          m derp -j$(nproc --all)
+          # Build
+          mka derp -j$(nproc --all)
 
       - name: Upload to Releases
         uses: softprops/action-gh-release@v2
@@ -77,5 +79,4 @@ jobs:
           files: android/out/target/product/a32x/DerpFest*.zip
           tag_name: a325g-${{ github.run_id }}
           name: DerpFest Build for A32
-          body: "Successful Build"
           
