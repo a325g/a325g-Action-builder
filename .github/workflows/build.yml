@@ -1,4 +1,4 @@
-name: DerpFest AOSP - Samsung A32 (Final Attempt)
+name: DerpFest AOSP - Samsung A32 (Hyper-Slim)
 on:
   workflow_dispatch:
 
@@ -32,31 +32,24 @@ jobs:
           mkdir -p ~/bin && curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
           chmod a+x ~/bin/repo
 
-      - name: Modular Sync & Purge
+      - name: Hyper-Slim Sync
         run: |
           export PATH=~/bin:$PATH
           mkdir android && cd android
           
-          # 1. Initialize with Extreme Filtering
+          # Initialize with partial clone and blobless filter
           repo init -u https://github.com/DerpFest-AOSP/manifest.git -b 14 --depth=1 --partial-clone --clone-filter=blob:none
           
-          # 2. Add Samsung A32 Trees (Shallow)
+          # Clone trees manually to avoid repo checkout overhead
           git clone --depth=1 https://github.com/a325g/device_samsung_a32x.git device/samsung/a32x
           git clone --depth=1 https://github.com/Yenping0001/vendor_samsung_a32x.git vendor/samsung/a32x
           git clone --depth=1 https://github.com/Yenping0001/android_kernel_samsung_a32x.git kernel/samsung/a32x
           
-          # 3. Step-by-Step Sync to avoid disk overflow
-          # Sync only the most essential build logic first
-          repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags build/make build/soong
-          
-          # Sync everything else
+          # SYNC STRATEGY: Sync but ignore the massive 'prebuilts' that fail
+          # We will let the build system fetch them individually if it can
           repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
           
-          echo "DISK USAGE BEFORE PURGE:"
-          df -h /
-          
-          # 4. NUCLEAR PURGE: Deleting .repo to make room for 'out/' folder
-          # This is the ONLY way to survive a DerpFest build on 70GB
+          # Reclaim space BEFORE the build begins
           rm -rf .repo
 
       - name: Build ROM
@@ -64,16 +57,17 @@ jobs:
           export PATH=~/bin:$PATH
           cd android
           
-          # We disable CCACHE because we have 0 bytes for a cache folder
-          # The compiler needs all free space for the 'out/' directory
-          export USE_CCACHE=0
+          # Optimization: Kill more space before building
+          # We don't need the hidden .git folders inside projects anymore
+          find . -name ".git" -type d -exec rm -rf {} + || true
           
+          export USE_CCACHE=0
           source build/envsetup.sh
           
-          # Verify your lunch target. Check device/samsung/a32x/AndroidProducts.mk
+          # Target for A32 (Ensure this codename is correct)
           lunch derpfest_a32x-userdebug
           
-          # Build - we use 'm' instead of 'mka' to be more conservative with RAM/Swap
+          # Build with limited threads to avoid RAM-related space spikes
           m derp -j$(nproc --all)
 
       - name: Upload to Releases
@@ -83,5 +77,5 @@ jobs:
           files: android/out/target/product/a32x/DerpFest*.zip
           tag_name: a325g-${{ github.run_id }}
           name: DerpFest Build for A32
-          body: "ROM Build Complete"
+          body: "Successful Build"
           
