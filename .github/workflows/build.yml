@@ -1,13 +1,16 @@
-name: LineageOS 21 Builder - Samsung A32
+name: LineageOS 21 Builder - SlimHub Edition
 on:
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
+      # 1. SLIMHUB: This cleans the environment to the bare minimum BEFORE anything else
+      - name: SlimHub Action (Extreme Cleanup)
+        uses: rokibhasansagar/slimhub_actions@main
+
+      # 2. MAXIMIZE SPACE: Now we re-allocate the cleared space
       - name: Maximize Build Space
         uses: easimon/maximize-build-space@master
         with:
@@ -25,40 +28,31 @@ jobs:
           mkdir -p ~/bin && curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
           chmod a+x ~/bin/repo
 
-      - name: Slim Sync & Purge
+      - name: Extreme Slim Sync
         run: |
           export PATH=~/bin:$PATH
           mkdir android && cd android
           
-          # 1. Initialize LineageOS 21 (Android 14)
+          # Initialize LineageOS 21 (Android 14)
           repo init -u https://github.com/LineageOS/android.git -b lineage-21.0 --depth=1 --partial-clone --clone-filter=blob:none
           
-          # 2. Clone your Samsung A32 trees
+          # Clone your Samsung A32 trees
           git clone --depth=1 https://github.com/a325g/device_samsung_a32x.git device/samsung/a32x
           git clone --depth=1 https://github.com/Yenping0001/vendor_samsung_a32x.git vendor/samsung/a32x
           git clone --depth=1 https://github.com/Yenping0001/android_kernel_samsung_a32x.git kernel/samsung/a32x
           
-          # 3. Sync everything
+          # Sync and IMMEDIATELY PURGE METADATA
           repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
-          
-          # 4. Reclaim Space: Delete the .repo folder (~30GB)
           rm -rf .repo
+          find . -name ".git" -type d -exec rm -rf {} + || true
 
       - name: Build ROM
         run: |
           export PATH=~/bin:$PATH
           cd android
-          
-          # Kill all hidden .git folders to free up another ~10GB
-          find . -name ".git" -type d -exec rm -rf {} + || true
-          
           export USE_CCACHE=0
           source build/envsetup.sh
-          
-          # Your device tree uses 'lineage_' prefix
           lunch lineage_a32x-userdebug
-          
-          # Build Lineage
           m bacon -j$(nproc --all)
 
       - name: Upload to Releases
