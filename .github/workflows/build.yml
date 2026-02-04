@@ -33,8 +33,9 @@ jobs:
           export PATH=~/bin:$PATH
           mkdir android && cd android
           
-          # Initialize LineageOS 21 (Android 14)
-          repo init -u https://github.com/LineageOS/android.git -b lineage-21.0 --depth=1 --partial-clone --clone-filter=blob:none
+          # Initialize LineageOS 23 (Android 16)
+          repo init -u https://github.com/LineageOS/android.git -b lineage-23.0 --depth=1 --no-tags -g default,-mips,-darwin,-windows
+          
           
           # Clone your Samsung A32 trees
           git clone --depth=1 https://github.com/a325g/device_samsung_a32x.git device/samsung/a32x
