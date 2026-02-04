@@ -53,6 +53,7 @@ jobs:
           cd android
           export USE_CCACHE=0
           source build/envsetup.sh
+          breakfast a32x
           lunch lineage_a32x-userdebug
           m bacon -j$(nproc --all)
 
