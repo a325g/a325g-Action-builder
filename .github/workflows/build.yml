@@ -37,17 +37,25 @@ jobs:
           repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
           rm -rf .repo
 
-      - name: Setup Interactive SSH Session
-        uses: mxschmitt/action-tmate@v3
-        with:
-          # This stops the "Permission Denied / Connection Reset" 
-          # by allowing you to enter via the Web URL without an SSH key.
-          limit-access-to-actor: false
+      - name: Build LineageOS
+        run: |
           
-          # This prevents the session from closing if the 
-          # connection is briefly unstable.
-          connect-timeout-seconds: 60
-
+          # 1. Initialize the build environment
+          source build/envsetup.sh
+          
+          # 2. Run lunch with the new format
+          lunch lineage_a32x-ap3a-userdebug
+          
+          # 3. Start the build in "Low RAM" mode (-j2)
+          # We use -k to keep going if a non-critical error occurs
+          m bacon -j2 -k
+        
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: LineageOS_A32x_Build
+          path: android/out/target/product/a32x/*.zip
+          if-no-files-found: warn
 
       # This step stays here as a placeholder for when you "detach" or finish
       - name: Final Upload
