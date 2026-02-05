@@ -1,4 +1,4 @@
-name: LineageOS 21 Builder - SlimHub Edition
+name: LineageOS 23 - Manual Interactive Build
 on:
   workflow_dispatch:
 
@@ -6,61 +6,47 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      # 1. SLIMHUB: This cleans the environment to the bare minimum BEFORE anything else
-      - name: SlimHub Action (Extreme Cleanup)
+      - name: SlimHub Cleanup
         uses: rokibhasansagar/slimhub_actions@main
 
-      # 2. MAXIMIZE SPACE: Now we re-allocate the cleared space
-      - name: Maximize Build Space
+      - name: Maximize Space
         uses: easimon/maximize-build-space@master
         with:
           root-reserve-mb: 512
           swap-size-mb: 1024
           remove-dotnet: 'true'
           remove-android: 'true'
-          remove-haskell: 'true'
 
-      - name: Install Build Tools
+      - name: Setup Tools & Sync
         run: |
           sudo apt update && sudo apt install -y bc bison build-essential curl flex g++-multilib \
           gcc-multilib git gnupg gperf libxml2-utils lz4 ncurses-dev python3 \
           libssl-dev rsync unzip zip zlib1g-dev python-is-python3
           mkdir -p ~/bin && curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
           chmod a+x ~/bin/repo
-
-      - name: Extreme Slim Sync
-        run: |
           export PATH=~/bin:$PATH
+          
           mkdir android && cd android
+          repo init -u https://github.com/LineageOS/android.git -b lineage-23.0 --depth=1
           
-          # Initialize LineageOS 23 (Android 16)
-          repo init -u https://github.com/LineageOS/android.git -b lineage-23.0 --depth=1 --no-tags -g default,-mips,-darwin,-windows
-          
-          
-          # Clone your Samsung A32 trees
+          # Clones (do these here so they are ready when you SSH in)
           git clone --depth=1 https://github.com/a325g/device_samsung_a32x.git device/samsung/a32x
-          git clone --depth=1 https://github.com/Yenping0001/vendor_samsung_a32x.git vendor/samsung/a32x
+          git clone --depth=1 https://github.com/Yenping0001/vendor_samsung_a32x.git vendor_samsung_a32x
           git clone --depth=1 https://github.com/Yenping0001/android_kernel_samsung_a32x.git kernel/samsung/a32x
           
-          # Sync and IMMEDIATELY PURGE METADATA
           repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
           rm -rf .repo
-          find . -name ".git" -type d -exec rm -rf {} + || true
 
-      - name: Build ROM
-        run: |
-          export PATH=~/bin:$PATH
-          cd android
-          export USE_CCACHE=0
-          source build/envsetup.sh
-          breakfast a32x
-          lunch lineage_a32x-trunk_staging-userdebug
-          m bacon -j$(nproc --all)
+      - name: SSH Debug Session
+        uses: mxschmitt/action-tmate@v3
+        with:
+          limit-access-to-actor: true
 
-      - name: Upload to Releases
+      # This step stays here as a placeholder for when you "detach" or finish
+      - name: Final Upload
         uses: softprops/action-gh-release@v2
-        if: success()
+        if: always()
         with:
           files: android/out/target/product/a32x/lineage-*.zip
-          tag_name: lineage-a325g-${{ github.run_id }}
+          tag_name: manual-build-${{ github.run_id }}
           
