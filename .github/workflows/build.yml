@@ -31,7 +31,7 @@ jobs:
           
           # Clones (do these here so they are ready when you SSH in)
           git clone --depth=1 https://github.com/a325g/device_samsung_a32x.git device/samsung/a32x
-          git clone --depth=1 https://github.com/Yenping0001/vendor_samsung_a32x.git vendor_samsung_a32x
+          git clone --depth=1 https://github.com/Yenping0001/vendor_samsung_a32x.git vendor/samsung/a32x
           git clone --depth=1 https://github.com/Yenping0001/android_kernel_samsung_a32x.git kernel/samsung/a32x
           
           repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
@@ -41,6 +41,7 @@ jobs:
         run: |
           
           # 1. Initialize the build environment
+          cd android
           source build/envsetup.sh
           
           # 2. Run lunch with the new format
