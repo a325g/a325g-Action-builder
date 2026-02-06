@@ -1,4 +1,4 @@
-name: LineageOS 23 - Manual Interactive Build
+name: LineageOS 23 - Samsung A32 Fix
 on:
   workflow_dispatch:
 
@@ -6,63 +6,64 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
       - name: SlimHub Cleanup
         uses: rokibhasansagar/slimhub_actions@main
 
-      - name: Maximize Space
-        uses: easimon/maximize-build-space@master
-        with:
-          root-reserve-mb: 512
-          swap-size-mb: 1024
-          remove-dotnet: 'true'
-          remove-android: 'true'
+      - name: Maximize RAM (Crucial for Soong)
+        run: |
+          # Creating 7GB of Swap to give the runner ~14GB total RAM
+          sudo fallocate -l 7G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
 
       - name: Setup Tools & Sync
         run: |
-          sudo apt update && sudo apt install -y bc bison build-essential curl flex g++-multilib \
-          gcc-multilib git gnupg gperf libxml2-utils lz4 ncurses-dev python3 \
-          libssl-dev rsync unzip zip zlib1g-dev python-is-python3
-          mkdir -p ~/bin && curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+          sudo apt update
+          sudo apt install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32readline-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev
+          mkdir -p ~/bin
+          curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
           chmod a+x ~/bin/repo
           export PATH=~/bin:$PATH
           
           mkdir android && cd android
-          repo init -u https://github.com/LineageOS/android.git -b lineage-23.0 --depth=1
-          
-          # Clones (do these here so they are ready when you SSH in)
-          git clone --depth=1 https://github.com/a325g/device_samsung_a32x.git device/samsung/a32x
-          git clone --depth=1 https://github.com/Yenping0001/vendor_samsung_a32x.git vendor/samsung/a32x
-          git clone --depth=1 https://github.com/Yenping0001/android_kernel_samsung_a32x.git kernel/samsung/a32x
-          
+          repo init -u https://github.com/LineageOS/android.git -b lineage-23.0 --git-lfs --depth=1
           repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
-          rm -rf .repo
+
+      - name: Cloning Your Specific A32 Trees
+        run: |
+          cd android
+          # Device Tree (Your link)
+          git clone https://github.com/a325g/device_samsung_a32x.git device/samsung/a32x
+          
+          # Kernel Tree (Your link)
+          git clone https://github.com/Yenping0001/android_kernel_samsung_a326b.git kernel/samsung/a326b
+          
+          # Vendor Tree (Your link)
+          git clone https://github.com/Yenping0001/vendor_samsung_a32x.git vendor/samsung/a32x
+
+      - name: Setup CCACHE
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-a32x-${{ github.run_id }}
+          restore-keys: ccache-a32x-
 
       - name: Build LineageOS
         run: |
-          
-          # 1. Initialize the build environment
           cd android
+          export USE_CCACHE=1
+          export CCACHE_DIR=~/.ccache
+          ccache -M 50G
+          export TARGET_RELEASE=ap3a
           source build/envsetup.sh
           
-          # 2. Run lunch with the new format
+          # Use the target from your device tree
           lunch lineage_a32x-ap3a-userdebug
           
-          # 3. Start the build in "Low RAM" mode (-j2)
-          # We use -k to keep going if a non-critical error occurs
-          m bacon -j2 -k
-        
-      - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: LineageOS_A32x_Build
-          path: android/out/target/product/a32x/*.zip
-          if-no-files-found: warn
-
-      # This step stays here as a placeholder for when you "detach" or finish
-      - name: Final Upload
-        uses: softprops/action-gh-release@v2
-        if: always()
-        with:
-          files: android/out/target/product/a32x/lineage-*.zip
-          tag_name: manual-build-${{ github.run_id }}
+          # Build with -j2 to prevent the runner from exploding
+          m bacon -j1 -k
           
