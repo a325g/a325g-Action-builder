@@ -32,7 +32,7 @@ jobs:
           mkdir android && cd android
           repo init -u https://github.com/LineageOS/android.git -b lineage-23.0 --git-lfs --depth=1
           repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
-
+          rm -rf .repo
       - name: Cloning Your Specific A32 Trees
         run: |
           cd android
