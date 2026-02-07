@@ -12,13 +12,23 @@ jobs:
       - name: SlimHub Cleanup
         uses: rokibhasansagar/slimhub_actions@main
 
-      - name: Maximize RAM (Crucial for Soong)
+      - name: Maximize RAM (Fixed Swap)
         run: |
-          # Creating 7GB of Swap to give the runner ~14GB total RAM
+          # 1. Disable any existing swap to avoid "Text file busy"
+          sudo swapoff -a || true
+          
+          # 2. Delete old swapfile if it exists
+          sudo rm -f /swapfile
+          
+          # 3. Create a fresh 7GB Swap
           sudo fallocate -l 7G /swapfile
           sudo chmod 600 /swapfile
           sudo mkswap /swapfile
           sudo swapon /swapfile
+          
+          # 4. Verify it's working
+          free -h
+
 
       - name: Setup Tools & Sync
         run: |
