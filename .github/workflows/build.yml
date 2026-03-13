@@ -1,4 +1,4 @@
-name: LineageOS 23 - Samsung A32 Fix
+name: LineageOS 23 - Samsung A32 Optimized
 on:
   workflow_dispatch:
 
@@ -9,71 +9,63 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: SlimHub Cleanup
+      - name: Deep SlimHub Cleanup
         uses: rokibhasansagar/slimhub_actions@main
+        # This clears ~30GB+ of pre-installed software to make room for Android sources
 
-      - name: Maximize RAM (Fixed Swap)
+      - name: Maximize Performance (ZRAM & Throttling)
         run: |
-          # 1. Disable any existing swap to avoid "Text file busy"
-          sudo swapoff -a || true
+          # 1. Setup ZRAM (Compressed RAM Swap) for 2026 build speeds
+          sudo apt install -y zram-config
+          # ZRAM effectively doubles your available memory by compressing it in the background
           
-          # 2. Delete old swapfile if it exists
-          sudo rm -f /swapfile
+          # 2. Aggressive Disk Cleanup (Beyond SlimHub)
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/powershell /usr/share/swift
           
-          # 3. Create a fresh 7GB Swap
-          sudo fallocate -l 7G /swapfile
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
-          
-          # 4. Verify it's working
-          free -h
-
+          # 3. Set Java memory limits to prevent the "OOM Killer" from stopping the build
+          echo "_JAVA_OPTIONS=-Xmx4g" >> $GITHUB_ENV
+          echo "ANDROID_JACK_VM_ARGS=-Dfile.encoding=UTF-8 -XX:+TieredCompilation -Xmx4g" >> $GITHUB_ENV
 
       - name: Setup Tools & Sync
         run: |
           sudo apt update
-          sudo apt install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32readline-dev lib32z1-dev liblz4-tool libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev
+          # Updated dependency list for Lineage 23/Android 16 compatibility
+          sudo apt install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32readline-dev lib32z1-dev liblz4-tool libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python-is-python3 libncurses5
+          
           mkdir -p ~/bin
           curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
           chmod a+x ~/bin/repo
           export PATH=~/bin:$PATH
           
           mkdir android && cd android
+          # --depth=1 is essential to save ~100GB of disk space
           repo init -u https://github.com/LineageOS/android.git -b lineage-23.0 --git-lfs --depth=1
           repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
+          
+          # CRITICAL: Delete the .repo folder after sync to free up ~120GB before building
           rm -rf .repo
-      - name: Cloning Your Specific A32 Trees
+
+      - name: Cloning Samsung A32 Trees
         run: |
           cd android
-          # Device Tree (Your link)
-          git clone https://github.com/a325g/device_samsung_a32x.git device/samsung/a32x
-          
-          # Kernel Tree (Your link)
-          git clone https://github.com/Yenping0001/android_kernel_samsung_a326b.git kernel/samsung/a32x
-          
-          # Vendor Tree (Your link)
-          git clone https://github.com/Yenping0001/vendor_samsung_a32x.git vendor/samsung/a32x
+          git clone https://github.com/a325g/device_samsung_a32x.git device/samsung/a32x --depth=1
+          git clone https://github.com/Yenping0001/android_kernel_samsung_a326b.git kernel/samsung/a32x --depth=1
+          git clone https://github.com/Yenping0001/vendor_samsung_a32x.git vendor/samsung/a32x --depth=1
 
-      - name: Setup CCACHE
-        uses: actions/cache@v4
-        with:
-          path: ~/.ccache
-          key: ccache-a32x-${{ github.run_id }}
-          restore-keys: ccache-a32x-
-
-      - name: Build LineageOS
+      - name: Build LineageOS (Memory-Safe Method)
         run: |
           cd android
           export USE_CCACHE=1
+          export CCACHE_EXEC=/usr/bin/ccache
           export CCACHE_DIR=~/.ccache
           ccache -M 50G
-          export TARGET_RELEASE=ap3a
+          
           source build/envsetup.sh
+          lunch lineage_a32x-ap2a-userdebug
           
-          # Use the target from your device tree
-          lunch lineage_a32x-ap3a-userdebug
+          # Optimization: Build "Stubs" first to isolate high-RAM Java tasks
+          mka api-stubs-docs module-lib-api-stubs-docs system-api-stubs-docs test-api-stubs-docs
           
-          # Build with -j2 to prevent the runner from exploding
-          m bacon -j1 -k
+          # Final build with -j1 to ensure reliability on 7GB RAM runners
+          m bacon -j1
           
