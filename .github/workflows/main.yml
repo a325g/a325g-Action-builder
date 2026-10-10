@@ -26,10 +26,10 @@ jobs:
           curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
           chmod a+x ~/bin/repo
           echo "$HOME/bin" >> $GITHUB_PATH
-          
-      - name: Start SSH Session (tmate)
-        uses: mxschmitt/action-tmate@v3
+           
+      - name: Setup Upterm session
+        uses: owenthereal/action-upterm@v1
         with:
+         ## Restricts access strictly to your GitHub account keys
           limit-access-to-actor: false
-          tmate-server-host: sgp1.tmate.io
           
